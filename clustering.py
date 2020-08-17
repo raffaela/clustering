@@ -7,6 +7,9 @@ Created on Thu Aug 13 17:41:09 2020
 import numpy as np
 import matplotlib.pyplot as plt 
 
+
+
+
 # cost function
 def Jxy(X,Y):
     # X: data vectors
@@ -26,8 +29,11 @@ def Jxy(X,Y):
 
 
 
-def generate_data(NC,M,P,SC,SD,S, flg_plot):
+def generate_data(params, flg_plot):
     # data generation
+    NC = params.NC; cl = params.cl; M = params.M; P = params.P; S = params.S
+    SC = S - 2 
+    SD = 1
     centers = np.random.normal(0,S, [M,int(NC/4)])
     cl_centers = np.repeat(centers, 4, axis=1) + np.random.normal(0,SC,[M,NC])
     data_vectors = np.repeat(cl_centers, P, axis=1) + np.random.normal(0,SD,[M,NC*P])
@@ -45,8 +51,12 @@ def generate_data(NC,M,P,SC,SD,S, flg_plot):
     return (data_vectors, cl_centers)
 
 
-def cluster_SA(data_vectors,N,K,epsilon,T0,M,NC,S,flg_plot):
+def cluster_SA(data_vectors,NC,params,S,flg_plot):
     # loop preparation
+    np.random.seed(0)
+    M = data_vectors.shape[0]
+    alg = params.alg; N = int(params.N); epsilon = params.eps; 
+    K = int(params.K); T0 = params.T0
     start = 0
     ctrl_loop =0
     while start==0:
@@ -62,7 +72,9 @@ def cluster_SA(data_vectors,N,K,epsilon,T0,M,NC,S,flg_plot):
     hist_J=np.array([]); hist_T=np.array([])
     while not(stop):
         for n in range(N):
-            Xhat = X + epsilon*np.random.normal(0,S,[M,NC])
+            if alg==0:
+                Xhat = X + epsilon*np.random.normal(0,S,[M,NC])
+            else:  Xhat = X + np.random.standard_cauchy([M,NC])
             Jhat = Jxy(data_vectors,Xhat)
             r = np.random.uniform(0,1)
             if r < np.exp((J-Jhat)/T):
@@ -74,23 +86,11 @@ def cluster_SA(data_vectors,N,K,epsilon,T0,M,NC,S,flg_plot):
             hist_J = np.append(hist_J,J)                
             hist_T = np.append(hist_T,T)
                 
-        T=T0/np.log2(2+k)
+        if alg==0:
+            T=T/np.log2(2+k)
+        else: T=T/(1+k)
         k+=1
         if k==K:
             stop = 1 
-    if flg_plot==1:
-        fig = plt.figure()
-        ax = fig.gca()
-        ax.plot(range(K*N),hist_J)
-        plt.show()
-        
-        # plot resulting clusters with data vectors
-        fig = plt.figure()
-        ax = fig.gca(projection='3d')
-        ax.scatter(Xmin[0,:], Xmin[1,:], Xmin[2,:])
-        ax.scatter(data_vectors[0,:], data_vectors[1,:], data_vectors[2,:])
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        #ax.scatter(cl_centers[0,:], cl_centers[1,:], cl_centers[2,:])
-    return Xmin,Jmin
+    
+    return Xmin,Jmin, hist_J
