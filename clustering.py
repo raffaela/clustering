@@ -11,23 +11,30 @@ import matplotlib.pyplot as plt
 
 
 # cost function
-def Jxy(X,Y):
+def Jxy(X,Y, ignore_empty=False):
     # X: data vectors
     # Y: codebook
-    # Returns: total cost 
+    # Returns: total cost  
+    high_cost = 1e6
     J=0; M,N=np.shape(X); M,K=np.shape(Y)
-    p=np.zeros([K,1])
+    d = np.zeros([K,N])
+    #p=np.zeros([K,1])
     for n in range(N):
-        d=np.sum(np.power(X[:,n].reshape([M,1])-Y,2),axis=0)
-        k=np.where(d==np.min(d))
-        p[k[0]]+=1
-        J+=np.min(d)
+        d[:,n] =np.sum(np.power(X[:,n].reshape([M,1])-Y,2),axis=0)
+    row_min = np.argmin(d, axis = 0)
+    aux = np.copy(d)
+    for k in range(K):
+        if k not in row_min:
+            if ignore_empty==True:
+                return high_cost
+            ind_min = np.argmin(aux[k,:])
+            row_min[ind_min] = k
+            aux[:,ind_min]=1e6 
+            #J+= d[k,x_min]
+    for ind,m in enumerate(row_min):
+        J+= d[m,ind]  
     J=J/N
-    if np.min(p)==0: J=100
     return J
-
-
-
 
 def generate_data(params, flg_plot):
     # data generation
@@ -51,9 +58,9 @@ def generate_data(params, flg_plot):
     return (data_vectors, cl_centers)
 
 
-def cluster_SA(data_vectors,NC,params,S,flg_plot):
+def cluster_SA(data_vectors,NC,params,S):
     # loop preparation
-    np.random.seed(0)
+    np.random.seed(1)
     M = data_vectors.shape[0]
     alg = params.alg; N = int(params.N); epsilon = params.eps; 
     K = int(params.K); T0 = params.T0
@@ -61,12 +68,13 @@ def cluster_SA(data_vectors,NC,params,S,flg_plot):
     ctrl_loop =0
     while start==0:
         X = np.random.normal(0,S,[M,NC])
-        Jmin = Jxy(data_vectors,X)
-        J = Jxy(data_vectors,X)
+        J = Jxy(data_vectors,X, True)
+        print(J)
         ctrl_loop+=1
         print(ctrl_loop)
-        if J<100:
+        if J<1e6:
             start=1
+    Jmin = J
     Xmin = X
     stop = 0; T = T0; k = 0
     hist_J=np.array([]); hist_T=np.array([])
@@ -94,3 +102,50 @@ def cluster_SA(data_vectors,NC,params,S,flg_plot):
             stop = 1 
     
     return Xmin,Jmin, hist_J
+
+
+def Dxy(x,y):
+    return np.sum(np.power(x-y,2))
+
+
+def cluster_DA(data_vectors,NC,params,S):
+    M = data_vectors.shape[0]
+    N = data_vectors.shape[1]
+    K = NC
+    T0 = params.T0; Tmin = params.Tmin 
+    alpha = params.alpha; delta = params.delta
+    T = T0; i = 0; stop = 0
+    Y = np.random.normal(0,S,[M,NC]); 
+    I = 100; epsilon = 1e-6
+    J = np.zeros(I); D = np.zeros(I)
+    while not(stop):
+        dxy = np.zeros([K,N])
+        # calculating p of y given x
+        for n in range(N):
+              for k in range(K):
+                  dxy[k,n]= Dxy(data_vectors[:,n],Y[:,k])
+        py_x = np.exp(-dxy/T)
+        Zx = np.sum(py_x,axis=0) 
+        py_x= py_x/Zx
+        
+        # updating Y (cluster centers)
+        Y = np.zeros([M,K])
+        for k in range(K):
+            for n in range(N):
+                Y[:,k] += data_vectors[:,n]*py_x[k,n]
+        Y = Y/np.sum(py_x, axis=1)            
+    
+        # Cost Function and Loop Control
+        J[i]=-T/N*np.sum(np.log(Zx))
+        D[i]=np.mean(np.sum(py_x*dxy,axis=0))
+        if (k>0):
+            if abs(J[i]-J[i-1])/abs(J[i-1])<delta:
+                T=alpha*T
+                Y=Y+epsilon*np.random.normal(0,1,np.shape(Y))
+        #print([i,J[i],D[i],LocalT[i]])   
+        i+=1
+        if (T<Tmin)or(i==I): stop=1
+        if k==K:
+            stop = 1 
+            
+        return Y, np.min(J), J

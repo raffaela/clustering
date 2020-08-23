@@ -4,8 +4,8 @@ Created on Sat Aug 15 01:50:22 2020
 
 @author: Raffaela
 """
-
-from clustering import generate_data,cluster_SA
+import clustering
+from clustering import generate_data,cluster_SA, cluster_DA, Jxy
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
@@ -37,13 +37,12 @@ def plot_figures(hist_J,data_vectors,Xmin,index, results_dir):
         #ax.scatter(cl_centers[0,:], cl_centers[1,:], cl_centers[2,:])
 
 
-def run_clustering(df_params,params_data, data_vectors, NC ,S, flg_plot, \
+def run_clustering(df_params,func,alg_type, params_data, data_vectors, NC ,S, flg_plot, \
                    results_dir, results_cols):
     params_clustering = df_params[1]
     n = df_params[0]
     start = perf_counter()
-    Xmin,Jmin, hist_J = cluster_SA(data_vectors,NC,params_clustering,S,\
-                                    flg_plot)
+    Xmin,Jmin, hist_J = func(data_vectors,NC,params_clustering,S)
     end = perf_counter()
     exec_time = end-start
     outfile_name = os.path.join(results_dir,"results_{}.npz").format(n)
@@ -60,40 +59,50 @@ def run_clustering(df_params,params_data, data_vectors, NC ,S, flg_plot, \
     return results
 
 
-def main():
+def main(alg_type, mp):
     results_dir = os.path.join(
             os.getcwd(), 
             datetime.now().strftime('%Y%m%d_%H%M%S'))
     os.mkdir(results_dir)
     csvfile = os.path.join(results_dir,"results.png")
-        
-    # parameters configuration
+            # data parameters configuration
     NC_opts = np.array([16])
     M_opts = np.array([3])
     P_opts = np.array([100])
     S_opts = np.array([7])
     cl_opts = np.array([1])
-    N_opts = np.array([1000,10000])
-    #N_opts = np.array([1000])
-    eps_opts = np.array([0.1,0.5])
-    K_opts = np.array([8,16])
-    #K_opts = np.array([8])
-    T0_opts = np.array([0.1,1,5])
-    #T0_opts = np.array([0.1])
-    alg_opts = np.array([0,1]) # 0 for SA, 1 for FSA, 2 for DA
-    
     data_params_cols = ["NC","cl","M","P","S"]
-    clustering_params_cols = ["alg","N","eps","K","T0"]
     results_cols = ["Jmin","time","output data","hist plot","cluster plot"]
     data_params = np.array(np.meshgrid(NC_opts,cl_opts,M_opts,P_opts,S_opts))
-    clustering_params = np.array(np.meshgrid(alg_opts,N_opts,eps_opts,K_opts,\
-                                             T0_opts))
-    
+        
+    if alg_type == "SA":
+        func = cluster_SA
+        # SA parameters configuration
+        N_opts = np.array([1000,10000])
+        eps_opts = np.array([0.1,0.5])
+        K_opts = np.array([8,16])
+        T0_opts = np.array([0.1,1,5])
+        alg_opts = np.array([0,1]) # 0 for SA, 1 for FSA
+        clustering_params_cols = ["alg","N","eps","K","T0"]
+        clustering_params = np.array(np.meshgrid(alg_opts,N_opts,eps_opts,K_opts,T0_opts))
+    else:    
+        # DA parameters configuration
+        func = cluster_DA
+        delta_opts = np.array([1e-3])
+        alpha_opts = np.array([0.5])
+        Tmin_opts = np.array([5e-3])
+        T0_opts = np.array([0.1,1])
+        alg_opts = np.array([0]) # 0 for DA, 1 for GLA
+        clustering_params_cols = ["alg","alpha","delta","T0","Tmin"]
+        clustering_params = np.array(np.meshgrid(alg_opts,alpha_opts,delta_opts,T0_opts,Tmin_opts))
+
+
     df_params_data = pd.DataFrame(data_params.T.reshape(-1, data_params.shape[0]),\
                                   columns=data_params_cols)
     df_params_clustering = pd.DataFrame(\
                     clustering_params.T.reshape(-1, \
                         clustering_params.shape[0]),columns=clustering_params_cols)
+    df_params_clustering = df_params_clustering.iloc[[33,35,37,39,41,43,45,47],:]
     print(df_params_clustering)
     cols = np.append(data_params_cols,clustering_params_cols)
     cols = np.append(cols,results_cols)
@@ -104,20 +113,38 @@ def main():
     NC = cl_centers.shape[1]
     S = params_data.S
     
-    with Pool(4) as pool:
-        res = pool.map(partial(run_clustering, params_data = params_data,\
-                               data_vectors=data_vectors,NC =NC,S=S,\
-                               flg_plot=flg_plot, results_dir = results_dir,\
-                               results_cols = results_cols),\
-                       df_params_clustering.iterrows())
-    df_results = pd.concat(res,axis=1).T
-    df_results.to_csv(csvfile)
-    
+    if mp==True:
+        with Pool(4) as pool:
+            res = pool.map(partial(run_clustering, func=func, alg_type=alg_type,
+                                    params_data = params_data,\
+                                    data_vectors=data_vectors,NC =NC,S=S,\
+                                    flg_plot=flg_plot, results_dir = results_dir,\
+                                    results_cols = results_cols),\
+                            df_params_clustering.iterrows())
+            df_results = pd.concat(res,axis=1).T
 
+    else:
+        
+        for n,row in df_params_clustering.iterrows():
+            params_clustering = df_params_clustering.iloc[n,:]
+            print("test")
+            print(params_clustering.alg)
+            df_results = run_clustering(df_params = (n,params_clustering), func=func, \
+                           alg_type=alg_type,params_data = params_data,\
+                                    data_vectors=data_vectors,NC =NC,S=S,\
+                                    flg_plot=flg_plot, results_dir = results_dir,\
+                                    results_cols = results_cols)
+    
+    df_results.to_csv(csvfile)
+    return data_vectors,cl_centers
 
 if __name__ == '__main__':
-    main()
-
+    alg_type = "SA"
+    mp = True
+    X,Y = main(alg_type,mp)
+    J_global = Jxy(X,Y)
+    print(J_global)
+    
 
 
 
