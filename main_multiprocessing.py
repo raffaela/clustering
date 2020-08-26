@@ -46,7 +46,7 @@ def run_clustering(df_params,func,alg_type, params_data, data_vectors, NC ,S, fl
     end = perf_counter()
     exec_time = end-start
     outfile_name = os.path.join(results_dir,"results_{}.npz").format(n)
-    np.savez(outfile_name, data_vectors, Xmin, hist_J)
+    np.savez(outfile_name, Xmin, hist_J)
     if flg_plot==1:
         histfile_name,clusterfile_name = plot_figures(hist_J,data_vectors,\
                                                       Xmin,n, results_dir)
@@ -59,17 +59,14 @@ def run_clustering(df_params,func,alg_type, params_data, data_vectors, NC ,S, fl
     return results
 
 
-def main(alg_type, mp):
-    results_dir = os.path.join(
-            os.getcwd(), 
-            datetime.now().strftime('%Y%m%d_%H%M%S'))
-    os.mkdir(results_dir)
+def main(alg_type, mp, results_dir):
+
     csvfile = os.path.join(results_dir,"results.png")
             # data parameters configuration
-    NC_opts = np.array([16])
+    NC_opts = np.array([32])
     M_opts = np.array([3])
-    P_opts = np.array([100])
-    S_opts = np.array([7])
+    P_opts = np.array([200])
+    S_opts = np.array([3])
     cl_opts = np.array([1])
     data_params_cols = ["NC","cl","M","P","S"]
     results_cols = ["Jmin","time","output data","hist plot","cluster plot"]
@@ -79,7 +76,7 @@ def main(alg_type, mp):
         func = cluster_SA
         # SA parameters configuration
         N_opts = np.array([1000,10000])
-        eps_opts = np.array([0.1,0.5])
+        eps_opts = np.array([0.05,0.1])
         K_opts = np.array([8,16])
         T0_opts = np.array([0.1,1,5])
         alg_opts = np.array([0,1]) # 0 for SA, 1 for FSA
@@ -91,7 +88,7 @@ def main(alg_type, mp):
         delta_opts = np.array([1e-3])
         alpha_opts = np.array([0.5])
         Tmin_opts = np.array([5e-3])
-        T0_opts = np.array([0.1,1])
+        T0_opts = np.array([1])
         alg_opts = np.array([0]) # 0 for DA, 1 for GLA
         clustering_params_cols = ["alg","alpha","delta","T0","Tmin"]
         clustering_params = np.array(np.meshgrid(alg_opts,alpha_opts,delta_opts,T0_opts,Tmin_opts))
@@ -102,7 +99,7 @@ def main(alg_type, mp):
     df_params_clustering = pd.DataFrame(\
                     clustering_params.T.reshape(-1, \
                         clustering_params.shape[0]),columns=clustering_params_cols)
-    df_params_clustering = df_params_clustering.iloc[[33,35,37,39,41,43,45,47],:]
+    #df_params_clustering = df_params_clustering.iloc[24:,:]
     print(df_params_clustering)
     cols = np.append(data_params_cols,clustering_params_cols)
     cols = np.append(cols,results_cols)
@@ -110,11 +107,13 @@ def main(alg_type, mp):
     flg_plot = 1 
     params_data = df_params_data.iloc[0,:]
     data_vectors, cl_centers = generate_data(params_data, flg_plot)
+    np.savez(os.path.join(results_dir,"input_data.npz"), data_vectors,cl_centers)
+    
     NC = cl_centers.shape[1]
     S = params_data.S
     
     if mp==True:
-        with Pool(4) as pool:
+        with Pool(8) as pool:
             res = pool.map(partial(run_clustering, func=func, alg_type=alg_type,
                                     params_data = params_data,\
                                     data_vectors=data_vectors,NC =NC,S=S,\
@@ -139,11 +138,19 @@ def main(alg_type, mp):
     return data_vectors,cl_centers
 
 if __name__ == '__main__':
+    results_dir = os.path.join(
+            os.getcwd(), 
+            datetime.now().strftime('%Y%m%d_%H%M%S'))
+    os.mkdir(results_dir)
     alg_type = "SA"
     mp = True
-    X,Y = main(alg_type,mp)
+    X,Y = main(alg_type,mp, results_dir)
     J_global = Jxy(X,Y)
     print(J_global)
+    summary_file = open(os.path.join(results_dir,"summary.txt"),"w")
+    summary_file.write(str(J_global))
+    summary_file.write("Com subclustering, função custo em sua versão original.")
+    summary_file.close()
     
 
 
