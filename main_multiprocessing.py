@@ -63,9 +63,9 @@ def main(alg_type, mp, results_dir):
 
     csvfile = os.path.join(results_dir,"results.png")
             # data parameters configuration
-    NC_opts = np.array([32])
+    NC_opts = np.array([16])
     M_opts = np.array([3])
-    P_opts = np.array([200])
+    P_opts = np.array([100])
     S_opts = np.array([3])
     cl_opts = np.array([1])
     data_params_cols = ["NC","cl","M","P","S"]
@@ -87,8 +87,8 @@ def main(alg_type, mp, results_dir):
         func = cluster_DA
         delta_opts = np.array([1e-3])
         alpha_opts = np.array([0.5])
-        Tmin_opts = np.array([5e-3])
-        T0_opts = np.array([1])
+        Tmin_opts = np.array([1e-1,5e-2])
+        T0_opts = np.array([1,5])
         alg_opts = np.array([0]) # 0 for DA, 1 for GLA
         clustering_params_cols = ["alg","alpha","delta","T0","Tmin"]
         clustering_params = np.array(np.meshgrid(alg_opts,alpha_opts,delta_opts,T0_opts,Tmin_opts))
@@ -142,7 +142,7 @@ if __name__ == '__main__':
             os.getcwd(), 
             datetime.now().strftime('%Y%m%d_%H%M%S'))
     os.mkdir(results_dir)
-    alg_type = "SA"
+    alg_type = "DA"
     mp = True
     X,Y = main(alg_type,mp, results_dir)
     J_global = Jxy(X,Y)

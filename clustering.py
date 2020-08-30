@@ -136,27 +136,30 @@ def cluster_DA(data_vectors,NC,params,S):
                   dxy[k,n]= Dxy(data_vectors[:,n],Y[:,k])
         py_x = np.exp(-dxy/T)
         Zx = np.sum(py_x,axis=0) 
-        py_x= py_x/Zx
+        if np.any(Zx==0):
+            break
+        else:
+            py_x= py_x/Zx
         
-        # updating Y (cluster centers)
-        Y = np.zeros([M,NC])
-        for k in range(NC):
-            for n in range(N):
-                Y[:,k] += data_vectors[:,n]*py_x[k,n]
-        Y = Y/np.sum(py_x, axis=1)  
+            # updating Y (cluster centers)
+            Y = np.zeros([M,NC])
+            for k in range(NC):
+                for n in range(N):
+                    Y[:,k] += data_vectors[:,n]*py_x[k,n]
+            Y = Y/np.sum(py_x, axis=1)  
+            
         
-    
-        # Cost Function and Loop Control
-        J[i]=-T/N*np.sum(np.log(Zx))
-        D[i]=np.mean(np.sum(py_x*dxy,axis=0))
-        if (i>0):
-            if abs(J[i]-J[i-1])/abs(J[i-1])<delta:
-                T=alpha*T
-                Y=Y+epsilon*np.random.normal(0,1,np.shape(Y))
-        print([i,J[i],D[i]])   
-        i+=1
-        print(i)
-        if (T<Tmin)or(i==I): 
-            fim=1
+            # Cost Function and Loop Control
+            J[i]=-T/N*np.sum(np.log(Zx))
+            D[i]=np.mean(np.sum(py_x*dxy,axis=0))
+            if (i>0):
+                if abs(J[i]-J[i-1])/abs(J[i-1])<delta:
+                    T=alpha*T
+                    Y=Y+epsilon*np.random.normal(0,1,np.shape(Y))
+            print([i,J[i],D[i]])   
+            i+=1
+            print(i)
+            if (T<Tmin)or(i==I): 
+                fim=1
     J = J[:i]   
     return Y, np.min(J), J
