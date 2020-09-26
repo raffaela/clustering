@@ -74,15 +74,17 @@ def run_SGA(data_vectors,df_params):
     lambd = int(params.lambd)
     num_parents = params.num_parents
     NC = int(params.num_clusters)
+    global_max = params.global_max
+    success_thr = params.success_thr
     num_aes = 0
     prob_mutation = 1
-    epsilon = 0.5
+    epsilon = 0.05
     max_fitness = -100
-    success_thr = 0.01
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     fitness = np.zeros([pop_size])
     for k in range(pop_size):
         fitness[k] = calc_fitness(data_vectors,x[:,:,k])
+        num_aes+=1
     args_sort  = np.argsort(fitness,axis=0)
     fitness_sort = fitness[args_sort]    
     max_fitness_cur = fitness_sort[-1]
@@ -100,15 +102,13 @@ def run_SGA(data_vectors,df_params):
         # recombination 
         offspring = np.zeros([num_bits,NC,lambd])
         for p in range(0,int(lambd/2),2):
-            # parents_ind = np.random.choice(range(parents.shape[2]), size =2,\
-            #                                 replace=False)
             r = np.random.rand(2)
-            p_ind = np.random.choice(range(pop_size), size =2, p =probs,\
+            p_ind = np.random.choice(range(pop_size), size =2, p = probs,\
                                             replace=False)
+            # p_ind = np.random.choice(range(pop_size), size =2,\
+            #                                   replace=False)
             p0_ind = p_ind[0]
             p1_ind= p_ind[1]
-            # p0_ind = num_parents - bisect.bisect(cum_probs,r[0])
-            # p1_ind = num_parents - bisect.bisect(cum_probs,r[1])
             p1 = x[:,:,int(p0_ind)]
             p2 = x[:,:,int(p1_ind)]
             split_loc = np.random.randint(num_bits)
@@ -124,9 +124,9 @@ def run_SGA(data_vectors,df_params):
                 R = np.random.randn(num_bits,NC)
                 offspring[:,:,p+1] = offspring[:,:,p+1]+epsilon*R
                 
-        
-        for k in range(pop_size):
-            fitness[k] = calc_fitness(data_vectors,offspring[:,:,k])
+        fitness = np.zeros(offspring.shape[2])
+        for p in range(offspring.shape[2]):
+            fitness[p] = calc_fitness(data_vectors,offspring[:,:,p])
             num_aes+=1
         # sort 
         args_sort  = np.argsort(fitness,axis=0)
@@ -139,7 +139,7 @@ def run_SGA(data_vectors,df_params):
         if max_fitness_cur>max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
-            if abs(max_fitness-global_max)<success_thr: 
+            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
                 #stores only first occurrence of reaching global maximum
                 break
 
@@ -156,10 +156,10 @@ def run_ES(data_vectors,df_params):
     lambd = int(params.lambd)
     NC = int(params.num_clusters)
     global_max = params.global_max
+    success_thr = params.success_thr
     epsilon = 5e-4 # for perturbation mutation
     max_fitness = -100
     prob_mutation = 1
-    success_thr = 0.01
     tau1 = 1/np.sqrt(2*num_bits)
     tau2 = 1/np.sqrt(2*np.sqrt(num_bits))
     start = 0
@@ -215,7 +215,7 @@ def run_ES(data_vectors,df_params):
         if max_fitness_cur > max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
-            if abs(max_fitness-global_max)<success_thr: 
+            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
                 #stores only first occurrence of reaching global maximum
                 break
     end = perf_counter()
@@ -230,32 +230,44 @@ if __name__ == '__main__':
             os.getcwd(), 
             datetime.now().strftime('%Y%m%d_%H%M%S'))
     os.mkdir(results_dir)
-    inputfile_name = os.path.join(results_dir,"input.npz")
-
-    epsilon = 5e-4 # for perturbation mutation
-    max_fitness = -100
+    input_exist = 1
     num_bits = 3
     NC = 16
-    P = 100
-    alg = "ES"
-    data_vectors, cl_centers = generate_data(NC,num_bits,P)
-    global_max = calc_fitness(data_vectors,cl_centers)
-    np.savez(inputfile_name, data_vectors, cl_centers, global_max, alg)
+    alg = "SGA"
+    if input_exist==0:
+        inputfile_name = os.path.join(results_dir,"input.npz")
+        epsilon = 5e-4 # for perturbation mutation
+        max_fitness = -100
+        num_bits = 3
+        NC = 16
+        P = 100
+        data_vectors, cl_centers = generate_data(NC,num_bits,P)
+        global_max = calc_fitness(data_vectors,cl_centers)
+        np.savez(inputfile_name, data_vectors, cl_centers, global_max, alg)
+    else:
+        input_dir = "20200924_012545"
+        inputfile_name = os.path.join(input_dir,"input.npz")
+        new_inputfile_name = os.path.join(results_dir,"input.npz")
+        input_data = np.load(inputfile_name)
+        data_vectors = input_data['arr_0']
+        cl_centers = input_data['arr_1']
+        global_max = input_data['arr_2']     
+        np.savez(new_inputfile_name, data_vectors, cl_centers, float(global_max), str(alg))
 
     if alg == "SGA":
         func = run_SGA
     elif alg =="ES":
         func = run_ES
-    mp = 0
-    loops = 1
+    mp = 1
+    loops = 24
     num_gen = 300
     pop_size = 50
     lambd = 300 #must be even
     num_parents = 50
+    success_thr = 5e-2
     
-    
-    df = pd.DataFrame([[num_bits,num_gen,pop_size,lambd,num_parents,NC,global_max,loops]], \
-                      columns=["num_bits","num_gen","pop_size","lambd","num_parents","num_clusters","global_max","loops"])
+    df = pd.DataFrame([[num_bits,num_gen,pop_size,lambd,num_parents,NC,global_max,success_thr, loops]], \
+                      columns=["num_bits","num_gen","pop_size","lambd","num_parents","num_clusters","global_max","success_thr","loops"])
     df_params  = df.loc[df.index.repeat(df.loops)].reset_index(drop=True)
     df_results = pd.DataFrame([], columns = ["max_fitness","max_x"])
     if mp==1:
@@ -298,8 +310,7 @@ if __name__ == '__main__':
             plot_figure(data_vectors, cl_centers, max_x_vec[:,:,l])
 
     # calc SR
-    success_threshold = 1e-2
-    num_success = np.where(abs(max_fitness_vec-global_max)<success_threshold)
+    num_success = np.where((abs(max_fitness_vec-global_max)<success_thr) | (max_fitness_vec>global_max))
     SR = num_success[0].shape[0]/loops
     print("SR:")
     print(SR)
