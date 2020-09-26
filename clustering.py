@@ -163,3 +163,34 @@ def cluster_DA(data_vectors,NC,params,S):
                 fim=1
     J = J[:i]   
     return Y, np.min(J), J
+
+
+
+def calc_DA_cost(data_vectors, Y, T):
+        M = data_vectors.shape[0]
+        N = data_vectors.shape[1]
+        NC = Y.shape[1]
+        dxy = np.zeros([NC,N])
+        # calculating p of y given x
+        for n in range(N):
+              for k in range(NC):
+                  dxy[k,n]= Dxy(data_vectors[:,n],Y[:,k])
+        py_x = np.exp(-dxy/T)
+        Zx = np.sum(py_x,axis=0) 
+        if np.any(Zx==0):
+            return 100
+        else:
+            py_x= py_x/Zx
+        
+            # updating Y (cluster centers)
+            Y = np.zeros([M,NC])
+            for k in range(NC):
+                for n in range(N):
+                    Y[:,k] += data_vectors[:,n]*py_x[k,n]
+            Y = Y/np.sum(py_x, axis=1)  
+            
+            # Cost Function and Distance
+            J = -T/N*np.sum(np.log(Zx))
+            D = np.mean(np.sum(py_x*dxy,axis=0))
+            
+        return J

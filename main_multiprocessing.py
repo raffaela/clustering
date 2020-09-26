@@ -5,7 +5,7 @@ Created on Sat Aug 15 01:50:22 2020
 @author: Raffaela
 """
 import clustering
-from clustering import generate_data,cluster_SA, cluster_DA, Jxy
+from clustering import generate_data,cluster_SA, cluster_DA, Jxy, calc_DA_cost
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
@@ -14,6 +14,7 @@ from time import perf_counter
 import matplotlib.pyplot as plt
 import os
 from functools import partial
+from load_data import get_test_data
 
 
 def plot_figures(hist_J,data_vectors,Xmin,index, results_dir):
@@ -59,13 +60,13 @@ def run_clustering(df_params,func,alg_type, params_data, data_vectors, NC ,S, fl
     return results
 
 
-def main(alg_type, mp, results_dir):
+def main(alg_type, mp, results_dir, data_vectors = None, cl_centers=None):
 
     csvfile = os.path.join(results_dir,"results.png")
             # data parameters configuration
-    NC_opts = np.array([16])
+    NC_opts = np.array([24])
     M_opts = np.array([3])
-    P_opts = np.array([100])
+    P_opts = np.array([160])
     S_opts = np.array([3])
     cl_opts = np.array([1])
     data_params_cols = ["NC","cl","M","P","S"]
@@ -87,7 +88,7 @@ def main(alg_type, mp, results_dir):
         func = cluster_DA
         delta_opts = np.array([1e-3])
         alpha_opts = np.array([0.5])
-        Tmin_opts = np.array([1e-1,5e-2])
+        Tmin_opts = np.array([5e-2])
         T0_opts = np.array([1,5])
         alg_opts = np.array([0]) # 0 for DA, 1 for GLA
         clustering_params_cols = ["alg","alpha","delta","T0","Tmin"]
@@ -106,7 +107,8 @@ def main(alg_type, mp, results_dir):
     df_results = pd.DataFrame([], columns = cols)
     flg_plot = 1 
     params_data = df_params_data.iloc[0,:]
-    data_vectors, cl_centers = generate_data(params_data, flg_plot)
+    if data_vectors is None and cl_centers is None:
+        data_vectors, cl_centers = generate_data(params_data, flg_plot)
     np.savez(os.path.join(results_dir,"input_data.npz"), data_vectors,cl_centers)
     
     NC = cl_centers.shape[1]
@@ -128,9 +130,11 @@ def main(alg_type, mp, results_dir):
             params_clustering = df_params_clustering.iloc[n,:]
             print("test")
             print(params_clustering.alg)
-            df_results = run_clustering(df_params = (n,params_clustering), func=func, \
-                           alg_type=alg_type,params_data = params_data,\
-                                    data_vectors=data_vectors,NC =NC,S=S,\
+            df_results = run_clustering(df_params = (n,params_clustering), \
+                                        func=func, alg_type=alg_type,\
+                                            params_data = params_data,\
+                                                data_vectors=data_vectors,\
+                                                    NC =NC,S=S,\
                                     flg_plot=flg_plot, results_dir = results_dir,\
                                     results_cols = results_cols)
     
@@ -144,12 +148,16 @@ if __name__ == '__main__':
     os.mkdir(results_dir)
     alg_type = "DA"
     mp = True
-    X,Y = main(alg_type,mp, results_dir)
-    J_global = Jxy(X,Y)
+    data_vectors, cl_centers = get_test_data(dir_name = "20200826_174250")
+    X,Y = main(alg_type,mp, results_dir, data_vectors, cl_centers)
+    if alg_type =="SA":
+        J_global = Jxy(X,Y)
+    else: 
+        Tmin = 5e-2
+        J_global = calc_DA_cost(X,Y,Tmin)
     print(J_global)
     summary_file = open(os.path.join(results_dir,"summary.txt"),"w")
     summary_file.write(str(J_global))
-    summary_file.write("Com subclustering, função custo em sua versão original.")
     summary_file.close()
     
 
