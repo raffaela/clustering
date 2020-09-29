@@ -78,7 +78,7 @@ def run_SGA(data_vectors,df_params):
     success_thr = params.success_thr
     num_aes = 0
     prob_mutation = 1
-    epsilon = 0.05
+    epsilon = 0.1
     max_fitness = -100
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     fitness = np.zeros([pop_size])
@@ -86,43 +86,38 @@ def run_SGA(data_vectors,df_params):
         fitness[k] = calc_fitness(data_vectors,x[:,:,k])
         num_aes+=1
     args_sort  = np.argsort(fitness,axis=0)
-    fitness_sort = fitness[args_sort]    
-    max_fitness_cur = fitness_sort[-1]
-    x_sort = x[:,:,args_sort]
+    fitness = fitness[args_sort]    
+    max_fitness_cur = fitness[-1]
+    x = x[:,:,args_sort]
     for n in range(num_gen):
         # parents selection
-        min_fitness = fitness_sort[0]
+        min_fitness = fitness[0]
         if max_fitness_cur != min_fitness:
-            probs = (fitness_sort-min_fitness)/(max_fitness_cur - min_fitness)
+            probs = (fitness-min_fitness)/(max_fitness_cur - min_fitness)
             probs = probs/np.sum(probs)
         else: probs = np.ones([pop_size,1])/pop_size
         cum_probs = np.cumsum(probs[:-1])
-        # for p in range(num_parents):
-        #     parents[:,:,p] = x_sort[:,:,num_parents - bisect.bisect(cum_probs,r[0,p])]
         # recombination 
         offspring = np.zeros([num_bits,NC,lambd])
-        for p in range(0,int(lambd/2),2):
-            r = np.random.rand(2)
-            p_ind = np.random.choice(range(pop_size), size =2, p = probs,\
-                                            replace=False)
-            # p_ind = np.random.choice(range(pop_size), size =2,\
-            #                                   replace=False)
-            p0_ind = p_ind[0]
-            p1_ind= p_ind[1]
+        for child in range(0,int(lambd/2),2):
+            parents_ind = np.random.choice(range(pop_size), size =2, p = probs,\
+                                              replace=False)
+            p0_ind = parents_ind[0]
+            p1_ind= parents_ind[1]
             p1 = x[:,:,int(p0_ind)]
             p2 = x[:,:,int(p1_ind)]
             split_loc = np.random.randint(num_bits)
-            offspring[:split_loc,:,p] = p1[:split_loc,:]
-            offspring[split_loc:,:,p] = p2[split_loc:,:]
-            offspring[:split_loc,:,p+1] = p2[:split_loc,:]
-            offspring[split_loc:,:,p+1] = p1[split_loc:,:]
+            offspring[:split_loc,:,child] = p1[:split_loc,:]
+            offspring[split_loc:,:,child] = p2[split_loc:,:]
+            offspring[:split_loc,:,child+1] = p2[:split_loc,:]
+            offspring[split_loc:,:,child+1] = p1[split_loc:,:]
             
             #mutation
             if np.random.rand()<prob_mutation:
                 R = np.random.randn(num_bits,NC)
-                offspring[:,:,p] = offspring[:,:,p]+epsilon*R
+                offspring[:,:,child] = offspring[:,:,child]+epsilon*R
                 R = np.random.randn(num_bits,NC)
-                offspring[:,:,p+1] = offspring[:,:,p+1]+epsilon*R
+                offspring[:,:,child+1] = offspring[:,:,child+1]+epsilon*R
                 
         fitness = np.zeros(offspring.shape[2])
         for p in range(offspring.shape[2]):
@@ -134,8 +129,8 @@ def run_SGA(data_vectors,df_params):
         x_sort = offspring[:,:,args_sort]
         #remove weaker parents
         x = x_sort[:,:,-pop_size:]
-        fitness_sort = fitness_sort[-pop_size:]
-        max_fitness_cur = fitness_sort[-1]
+        fitness = fitness_sort[-pop_size:]
+        max_fitness_cur = fitness[-1]
         if max_fitness_cur>max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
@@ -167,13 +162,28 @@ def run_ES(data_vectors,df_params):
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     sigma_x = np.random.uniform(1e-3,1e-1,size=[num_bits,NC,pop_size])
     num_aes = 0
+    fitness = np.zeros([pop_size])
+    for k in range(pop_size):
+        fitness[k] = calc_fitness(data_vectors,x[:,:,k])
+        num_aes+=1
+    args_sort  = np.argsort(fitness,axis=0)
+    fitness = fitness[args_sort]    
+    max_fitness_cur = fitness[-1]
+    x = x[:,:,args_sort]
     for n in range(num_gen):
+        # parents selection
+        min_fitness = fitness[0]
+        if max_fitness_cur != min_fitness:
+            probs = (fitness-min_fitness)/(max_fitness_cur - min_fitness)
+            probs = probs/np.sum(probs)
+        else: probs = np.ones([pop_size,1])/pop_size
+        cum_probs = np.cumsum(probs[:-1])
         x_offspring = np.zeros([num_bits, NC,lambd])
         sigmax_offspring = np.zeros([num_bits,NC,lambd])
         for child in range(lambd):
             # parents selection
-            parents_ind = np.random.choice(range(pop_size), size =2,\
-                                            replace=False)
+            parents_ind = np.random.choice(range(pop_size), size =2, p = probs,\
+                                              replace=False)
             parents = x[:,:,parents_ind]
             sigma_parents = sigma_x[:,:,parents_ind]
             #recombination
@@ -181,8 +191,8 @@ def run_ES(data_vectors,df_params):
             p2 = parents[:,:,1]
             sigma_p1 = sigma_parents[:,:,0]
             sigma_p2 = sigma_parents[:,:,1]
-            choice  = np.random.randint(2,size=[num_bits])
-            choice = np.repeat(choice.reshape([num_bits,1]),NC,axis=1)
+            choice  = np.random.randint(2,size=[num_bits,NC])
+            #choice = np.repeat(choice.reshape([num_bits,1]),NC,axis=1)
             x_offspring[:,:,child] = p1*(1-choice)+p2*choice
             sigmax_offspring[:,:,child] = (sigma_p1+sigma_p2)/2
             #mutation
@@ -211,7 +221,8 @@ def run_ES(data_vectors,df_params):
         x = x_sort[:,:,lambd-pop_size:]
         sigmax_sort = sigma_x[:,:,args_sort]
         sigma_x = sigmax_sort[:,:,lambd-pop_size:]
-        max_fitness_cur = fitness_sort[-1]
+        fitness = fitness_sort[lambd-pop_size:]
+        max_fitness_cur = fitness[-1]
         if max_fitness_cur > max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
@@ -221,8 +232,6 @@ def run_ES(data_vectors,df_params):
     end = perf_counter()
     exec_time = end-start
     return max_fitness,max_x, num_aes, exec_time
-
-
 
 
 if __name__ == '__main__':
@@ -245,7 +254,7 @@ if __name__ == '__main__':
         global_max = calc_fitness(data_vectors,cl_centers)
         np.savez(inputfile_name, data_vectors, cl_centers, global_max, alg)
     else:
-        input_dir = "20200924_012545"
+        input_dir = "resultados-parte1\\20200924_012545"
         inputfile_name = os.path.join(input_dir,"input.npz")
         new_inputfile_name = os.path.join(results_dir,"input.npz")
         input_data = np.load(inputfile_name)
@@ -259,10 +268,12 @@ if __name__ == '__main__':
     elif alg =="ES":
         func = run_ES
     mp = 1
-    loops = 24
+    loops = 100
     num_gen = 300
     pop_size = 50
+    #pop_size = 15
     lambd = 300 #must be even
+    #lambd = 100
     num_parents = 50
     success_thr = 5e-2
     
@@ -319,7 +330,7 @@ if __name__ == '__main__':
     print("MBF:")
     print(MBF)
     #calc AES
-    pos_success = np.where(num_aes_vec!=-1)
+    pos_success = np.where(num_aes_vec!=num_gen*lambd+pop_size)
     AES = np.mean(num_aes_vec[pos_success])
     print("AES:")
     print(AES)
