@@ -48,20 +48,39 @@ def calc_fitness(X,Y, ignore_empty=False):
     J=J/N
     return -J
 
-def generate_data(NC,M,P):
-    flg_plot=0
+def generate_data(NC,M,P,cl):
+    flg_plot=1
     # data generation
     cl_centers = np.random.normal(0,3,[M,NC])
     data_vectors = np.repeat(cl_centers, P, axis=1) + np.random.normal(0,1,[M,NC*P])
-    
+    # S=1
+    # SC = S+2
+    # weights = np.random.uniform(0.1,1,size=16)
+    # weights = weights/np.sum(weights)
+    # num_vecs_cluster = np.random.multinomial(1600,weights)
+    # # if cl==1:
+    # #     #SD = 1
+
+    # #     centers = np.random.normal(0,SC, [M,int(NC/4)])
+    # #     cl_centers = np.repeat(centers, 4, axis=1) + np.random.normal(0,S,[M,NC])
+    # # else: 
+    # cl_centers = np.random.normal(0,SC,[M,NC])
+    # #data_vectors = np.repeat(cl_centers, P, axis=1) + np.random.normal(0,1,[M,NC*P])
+    # for k in range(NC):
+    #     if k == 0:
+    #         data_vectors = np.repeat(cl_centers[:,k].reshape([M,1]), num_vecs_cluster[k],axis=1) + np.random.normal(0,1,[M,num_vecs_cluster[k]])    
+    #     else:
+    #         data = np.repeat(cl_centers[:,k].reshape([M,1]), num_vecs_cluster[k],axis=1) + np.random.normal(0,1,[M,num_vecs_cluster[k]])
+    #         data_vectors = np.append(data_vectors,data,axis=1)
     if flg_plot==1:
         # plot generated data
         fig = plt.figure()
-        ax = fig.gca()
-        ax.scatter(cl_centers[0,:], cl_centers[1,:])
-        ax.scatter(data_vectors[0,:], data_vectors[1,:])
+        ax = fig.gca(projection='3d')
+        ax.scatter(cl_centers[0,:], cl_centers[1,:], cl_centers[2,:])
+        ax.scatter(data_vectors[0,:], data_vectors[1,:],data_vectors[2,:])
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
     return (data_vectors, cl_centers)
 
 
@@ -157,8 +176,6 @@ def run_ES(data_vectors,df_params):
     prob_mutation = 1
     tau1 = 1/np.sqrt(2*num_bits)
     tau2 = 1/np.sqrt(2*np.sqrt(num_bits))
-    start = 0
-    tries = 0
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     sigma_x = np.random.uniform(1e-3,1e-1,size=[num_bits,NC,pop_size])
     num_aes = 0
@@ -233,28 +250,102 @@ def run_ES(data_vectors,df_params):
     exec_time = end-start
     return max_fitness,max_x, num_aes, exec_time
 
+def run_EP(data_vectors,df_params):
+    start = perf_counter()
+    params = df_params[1]
+    num_gen = int(params.num_gen)
+    pop_size = int(params.pop_size)
+    num_bits = int(params.num_bits)
+    lambd = int(params.lambd)
+    NC = int(params.num_clusters)
+    global_max = params.global_max
+    success_thr = params.success_thr
+    epsilon = 5e-4 # for perturbation mutation
+    max_fitness = -100
+    prob_mutation = 1
+    tau1 = 1/np.sqrt(2*num_bits)
+    tau2 = 1/np.sqrt(2*np.sqrt(num_bits))
+    x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
+    sigma_x = np.random.uniform(1e-3,1e-1,size=[num_bits,NC,pop_size])
+    num_aes = 0
+    fitness = np.zeros([pop_size])
+    for k in range(pop_size):
+        fitness[k] = calc_fitness(data_vectors,x[:,:,k])
+        num_aes+=1
+    args_sort  = np.argsort(fitness,axis=0)
+    fitness = fitness[args_sort]    
+    max_fitness_cur = fitness[-1]
+    x = x[:,:,args_sort]
+    for n in range(num_gen):
+        # parents selection
+        for  ind_par in x.shape[2]:
+        
+            parent = x[:,:,ind_par]
+            sigma_parent = sigma_x[:,:,ind_par]
+            #recombination
+            x_offspring[:,:,child] = parent
+            sigmax_offspring[:,:,child] = sigma_parent
+            #mutation
+            if np.random.uniform(0,1)<prob_mutation:
+                Rt1 = np.random.randn()
+                Rt2= np.random.randn(num_bits,NC)
+                sigmax_offspring[:,:,child] = sigmax_offspring[:,:,child]\
+                    *np.exp(tau1*Rt1)*np.exp(tau2*Rt2)
+                if np.any(sigmax_offspring[:,:,child]<epsilon):
+                    sigmax_child = sigmax_offspring[:,:,child]
+                    positions = np.where(sigmax_child<epsilon)
+                    sigmax_child[positions] = epsilon
+                    sigmax_offspring[:,:,child] = sigmax_child
+                R = np.random.randn(num_bits,NC)
+                x_offspring[:,:,child] = x_offspring[:,:,child]+ sigmax_offspring[:,:,child]*R
+ 
+        x = x_offspring
+        sigma_x = sigmax_offspring
+        fitness = np.zeros([x.shape[2]])
+        for p in range(x.shape[2]):
+            fitness[p] = calc_fitness(data_vectors,x[:,:,p])
+            num_aes+=1
+        args_sort  = np.argsort(fitness,axis=0)
+        fitness_sort = fitness[args_sort]
+        x_sort = x[:,:,args_sort]
+        x = x_sort[:,:,lambd-pop_size:]
+        sigmax_sort = sigma_x[:,:,args_sort]
+        sigma_x = sigmax_sort[:,:,lambd-pop_size:]
+        fitness = fitness_sort[lambd-pop_size:]
+        max_fitness_cur = fitness[-1]
+        if max_fitness_cur > max_fitness:
+            max_fitness = max_fitness_cur
+            max_x = x[:,:,-1]
+            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
+                #stores only first occurrence of reaching global maximum
+                break
+    end = perf_counter()
+    exec_time = end-start
+    return max_fitness,max_x, num_aes, exec_time
+
 
 if __name__ == '__main__':
     results_dir = os.path.join(
             os.getcwd(), 
             datetime.now().strftime('%Y%m%d_%H%M%S'))
     os.mkdir(results_dir)
-    input_exist = 1
+    csvfile = os.path.join(results_dir,"params.csv")
+    input_exist = 0
     num_bits = 3
-    NC = 16
+    NC = 24
     alg = "SGA"
     if input_exist==0:
         inputfile_name = os.path.join(results_dir,"input.npz")
-        epsilon = 5e-4 # for perturbation mutation
         max_fitness = -100
         num_bits = 3
-        NC = 16
-        P = 100
-        data_vectors, cl_centers = generate_data(NC,num_bits,P)
+        P = 160
+        cl = 0
+        data_vectors, cl_centers = generate_data(NC,num_bits,P,cl)
         global_max = calc_fitness(data_vectors,cl_centers)
         np.savez(inputfile_name, data_vectors, cl_centers, global_max, alg)
     else:
         input_dir = "resultados-parte1\\20200924_012545"
+        #input_dir = "20200929_221616"
         inputfile_name = os.path.join(input_dir,"input.npz")
         new_inputfile_name = os.path.join(results_dir,"input.npz")
         input_data = np.load(inputfile_name)
@@ -279,11 +370,13 @@ if __name__ == '__main__':
     
     df = pd.DataFrame([[num_bits,num_gen,pop_size,lambd,num_parents,NC,global_max,success_thr, loops]], \
                       columns=["num_bits","num_gen","pop_size","lambd","num_parents","num_clusters","global_max","success_thr","loops"])
+    df.to_csv(csvfile)
     df_params  = df.loc[df.index.repeat(df.loops)].reset_index(drop=True)
+    
     df_results = pd.DataFrame([], columns = ["max_fitness","max_x"])
     if mp==1:
         with Pool(8) as pool:
-             res = pool.map(partial(func,data_vectors), df_params.iterrows())
+              res = pool.map(partial(func,data_vectors), df_params.iterrows())
              
         outfile_name = os.path.join(results_dir,"results.npz")
         
