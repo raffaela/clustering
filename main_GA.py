@@ -26,6 +26,8 @@ def plot_figure(data_vectors, cl_centers, max_x_vec):
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.legend()
+    
+    
 # cost function
 def calc_fitness(X,Y, ignore_empty=False):
     # X: data vectors
@@ -53,25 +55,7 @@ def generate_data(NC,M,P,cl):
     # data generation
     cl_centers = np.random.normal(0,3,[M,NC])
     data_vectors = np.repeat(cl_centers, P, axis=1) + np.random.normal(0,1,[M,NC*P])
-    # S=1
-    # SC = S+2
-    # weights = np.random.uniform(0.1,1,size=16)
-    # weights = weights/np.sum(weights)
-    # num_vecs_cluster = np.random.multinomial(1600,weights)
-    # # if cl==1:
-    # #     #SD = 1
 
-    # #     centers = np.random.normal(0,SC, [M,int(NC/4)])
-    # #     cl_centers = np.repeat(centers, 4, axis=1) + np.random.normal(0,S,[M,NC])
-    # # else: 
-    # cl_centers = np.random.normal(0,SC,[M,NC])
-    # #data_vectors = np.repeat(cl_centers, P, axis=1) + np.random.normal(0,1,[M,NC*P])
-    # for k in range(NC):
-    #     if k == 0:
-    #         data_vectors = np.repeat(cl_centers[:,k].reshape([M,1]), num_vecs_cluster[k],axis=1) + np.random.normal(0,1,[M,num_vecs_cluster[k]])    
-    #     else:
-    #         data = np.repeat(cl_centers[:,k].reshape([M,1]), num_vecs_cluster[k],axis=1) + np.random.normal(0,1,[M,num_vecs_cluster[k]])
-    #         data_vectors = np.append(data_vectors,data,axis=1)
     if flg_plot==1:
         # plot generated data
         fig = plt.figure()
@@ -95,19 +79,24 @@ def run_SGA(data_vectors,df_params):
     NC = int(params.num_clusters)
     global_max = params.global_max
     success_thr = params.success_thr
+    num_gen_tolerance = 20
+    epsilon = 0.1
     num_aes = 0
     prob_mutation = 1
-    epsilon = 0.1
     max_fitness = -100
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     fitness = np.zeros([pop_size])
+    time_no_improve = 0
+
     for k in range(pop_size):
         fitness[k] = calc_fitness(data_vectors,x[:,:,k])
         num_aes+=1
+    max_fitness_hist = np.array([np.max(fitness)])
     args_sort  = np.argsort(fitness,axis=0)
     fitness = fitness[args_sort]    
     max_fitness_cur = fitness[-1]
     x = x[:,:,args_sort]
+
     for n in range(num_gen):
         # parents selection
         min_fitness = fitness[0]
@@ -150,16 +139,19 @@ def run_SGA(data_vectors,df_params):
         x = x_sort[:,:,-pop_size:]
         fitness = fitness_sort[-pop_size:]
         max_fitness_cur = fitness[-1]
+        max_fitness_hist = np.append(max_fitness_hist,max_fitness_cur)
+        time_no_improve+=1
         if max_fitness_cur>max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
-            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
-                #stores only first occurrence of reaching global maximum
-                break
+            time_no_improve = 0
+        if (max_fitness>=global_max or time_no_improve>=num_gen_tolerance): 
+            #stores only first occurrence of reaching global maximum
+            break
 
     end = perf_counter()
     exec_time = end-start
-    return max_fitness,max_x, num_aes, exec_time
+    return max_fitness,max_x,max_fitness_hist,num_aes, exec_time
 
 def run_ES(data_vectors,df_params):
     start = perf_counter()
@@ -178,15 +170,18 @@ def run_ES(data_vectors,df_params):
     tau2 = 1/np.sqrt(2*np.sqrt(num_bits))
     x = np.random.uniform(-5,5,size=[num_bits,NC,pop_size])
     sigma_x = np.random.uniform(1e-3,1e-1,size=[num_bits,NC,pop_size])
+    num_gen_tolerance = 20
     num_aes = 0
     fitness = np.zeros([pop_size])
     for k in range(pop_size):
         fitness[k] = calc_fitness(data_vectors,x[:,:,k])
         num_aes+=1
+    max_fitness_hist = np.array([np.max(fitness)])
     args_sort  = np.argsort(fitness,axis=0)
     fitness = fitness[args_sort]    
     max_fitness_cur = fitness[-1]
     x = x[:,:,args_sort]
+    time_no_improve = 0
     for n in range(num_gen):
         # parents selection
         min_fitness = fitness[0]
@@ -209,7 +204,6 @@ def run_ES(data_vectors,df_params):
             sigma_p1 = sigma_parents[:,:,0]
             sigma_p2 = sigma_parents[:,:,1]
             choice  = np.random.randint(2,size=[num_bits,NC])
-            #choice = np.repeat(choice.reshape([num_bits,1]),NC,axis=1)
             x_offspring[:,:,child] = p1*(1-choice)+p2*choice
             sigmax_offspring[:,:,child] = (sigma_p1+sigma_p2)/2
             #mutation
@@ -240,17 +234,20 @@ def run_ES(data_vectors,df_params):
         sigma_x = sigmax_sort[:,:,lambd-pop_size:]
         fitness = fitness_sort[lambd-pop_size:]
         max_fitness_cur = fitness[-1]
+        max_fitness_hist = np.append(max_fitness_hist,max_fitness_cur)
+        time_no_improve+=1
         if max_fitness_cur > max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
-            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
-                #stores only first occurrence of reaching global maximum
-                break
+            time_no_improve = 0
+        if (max_fitness>=global_max or time_no_improve>=num_gen_tolerance): 
+            #stores only first occurrence of reaching global maximum
+            break
     end = perf_counter()
     exec_time = end-start
-    return max_fitness,max_x, num_aes, exec_time
+    return max_fitness,max_x,max_fitness_hist,num_aes, exec_time
 
-def run_EP(data_vectors,df_params):
+def run_EP(data_vectors,df_params): #not working yet
     start = perf_counter()
     params = df_params[1]
     num_gen = int(params.num_gen)
@@ -272,18 +269,22 @@ def run_EP(data_vectors,df_params):
     for k in range(pop_size):
         fitness[k] = calc_fitness(data_vectors,x[:,:,k])
         num_aes+=1
+    max_fitness_hist = np.array([np.max(fitness)])
     args_sort  = np.argsort(fitness,axis=0)
     fitness = fitness[args_sort]    
     max_fitness_cur = fitness[-1]
     x = x[:,:,args_sort]
+    time_no_improve = 0
     for n in range(num_gen):
         # parents selection
-        for  ind_par in x.shape[2]:
+        x_offspring = np.zeros([num_bits, NC,lambd])
+        sigmax_offspring = np.zeros([num_bits,NC,lambd])
+        for  ind_par in range(x.shape[2]):
         
             parent = x[:,:,ind_par]
             sigma_parent = sigma_x[:,:,ind_par]
             #recombination
-            x_offspring[:,:,child] = parent
+            x_offspring[:,:,] = parent
             sigmax_offspring[:,:,child] = sigma_parent
             #mutation
             if np.random.uniform(0,1)<prob_mutation:
@@ -316,12 +317,14 @@ def run_EP(data_vectors,df_params):
         if max_fitness_cur > max_fitness:
             max_fitness = max_fitness_cur
             max_x = x[:,:,-1]
-            if (abs(max_fitness-global_max)< success_thr or max_fitness>global_max): 
+            max_fitness_hist = np.append(max_fitness_hist,max_fitness_cur)
+            time_no_improve = 0
+        if (max_fitness>=global_max or time_no_improve>=num_gen_tolerance): 
                 #stores only first occurrence of reaching global maximum
-                break
+            break
     end = perf_counter()
     exec_time = end-start
-    return max_fitness,max_x, num_aes, exec_time
+    return max_fitness,max_x,max_fitness_hist,num_aes, exec_time
 
 
 if __name__ == '__main__':
@@ -330,15 +333,15 @@ if __name__ == '__main__':
             datetime.now().strftime('%Y%m%d_%H%M%S'))
     os.mkdir(results_dir)
     csvfile = os.path.join(results_dir,"params.csv")
-    input_exist = 0
+    input_exist = 1
     num_bits = 3
-    NC = 24
-    alg = "SGA"
+    NC = 16
+    alg = "EP"
     if input_exist==0:
         inputfile_name = os.path.join(results_dir,"input.npz")
         max_fitness = -100
         num_bits = 3
-        P = 160
+        P = 100
         cl = 0
         data_vectors, cl_centers = generate_data(NC,num_bits,P,cl)
         global_max = calc_fitness(data_vectors,cl_centers)
@@ -358,13 +361,15 @@ if __name__ == '__main__':
         func = run_SGA
     elif alg =="ES":
         func = run_ES
-    mp = 1
-    loops = 100
+    elif alg =="EP": 
+        func =run_EP
+    mp = 0
+    loops = 1
     num_gen = 300
+    #pop_size = 10
     pop_size = 50
-    #pop_size = 15
     lambd = 300 #must be even
-    #lambd = 100
+    #lambd = 60
     num_parents = 50
     success_thr = 5e-2
     
@@ -385,28 +390,31 @@ if __name__ == '__main__':
         data = np.load(outfile_name, allow_pickle=True)
         result = data['arr_0']
         ini = 0
-        for r in result:
+        max_fitness_hist = np.zeros([num_gen,loops])
+        for ind_r, r in enumerate(result):
             if ini == 0:
                 max_fitness_vec = r[0]
-                max_x_vec = r[1]
-                max_x_vec = max_x_vec.reshape([max_x_vec.shape[0],max_x_vec.shape[1],1])
-                num_aes_vec = r[2]
-                exec_time_vec = r[3]
+                max_x_vec = r[1].reshape([r[1].shape[0],r[1].shape[1],1])
+                max_fitness_hist[:r[2].shape[0],ind_r] = r[2]
+                num_aes_vec = r[3]
+                exec_time_vec = r[4]
             else:
                 max_fitness_vec = np.append(max_fitness_vec,r[0]) 
                 max_x_vec = np.append(max_x_vec,r[1].reshape([r[1].shape[0],r[1].shape[1],1]), axis=2)
-                num_aes_vec = np.append(num_aes_vec, r[2])
-                exec_time_vec = np.append(exec_time_vec, r[3])
+                max_fitness_hist[:r[2].shape[0],ind_r] = r[2]
+                num_aes_vec = np.append(num_aes_vec, r[3])
+                exec_time_vec = np.append(exec_time_vec, r[4])
             ini+=1
             plot_figure(data_vectors, cl_centers, max_x_vec[:,:,-1])
             
     else:
         max_fitness_vec = np.zeros(loops)
         max_x_vec = np.zeros([num_bits,NC,loops])
+        #max_fitness_hist = np.zeros([loops])
         num_aes_vec = np.zeros(loops)
         exec_time_vec = np.zeros(loops)
         for l in range(loops):
-            max_fitness,max_x, num_aes, exec_time = func(data_vectors,(l,df.loc[0]))
+            max_fitness,max_x, mas_fitness_hist, num_aes, exec_time = func(data_vectors,(l,df.loc[0]))
             max_fitness_vec[l] = max_fitness
             max_x_vec[:,:,l] = max_x
             num_aes_vec[l] = num_aes
@@ -414,8 +422,8 @@ if __name__ == '__main__':
             plot_figure(data_vectors, cl_centers, max_x_vec[:,:,l])
 
     # calc SR
-    num_success = np.where((abs(max_fitness_vec-global_max)<success_thr) | (max_fitness_vec>global_max))
-    SR = num_success[0].shape[0]/loops
+    pos_success = np.where((abs(max_fitness_vec-global_max)<success_thr) | (max_fitness_vec>global_max))
+    SR = pos_success[0].shape[0]/loops
     print("SR:")
     print(SR)
     #calc MBF
@@ -423,10 +431,9 @@ if __name__ == '__main__':
     print("MBF:")
     print(MBF)
     #calc AES
-    pos_success = np.where(num_aes_vec!=num_gen*lambd+pop_size)
     AES = np.mean(num_aes_vec[pos_success])
     print("AES:")
     print(AES)
-    mtime = np.mean(exec_time_vec)
+    mtime = np.mean(exec_time_vec[pos_success])
     print("Mean execution time:")
     print(mtime)
