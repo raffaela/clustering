@@ -4,6 +4,8 @@ Created on Thu Sep 10 18:56:15 2020
 
 @author: Raffaela
 """
+
+
 import numpy as np
 import matplotlib.pyplot as plt 
 import bisect
